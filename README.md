@@ -1,0 +1,262 @@
+[index.html](https://github.com/user-attachments/files/29659186/index.html)
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>去中心化擔保交易平台</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/web3@1.8.2/dist/web3.min.js"></script>
+    <style>
+        body { background-color: #f8f9fa; padding: 30px; }
+        .card { border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 25px; background: white; padding: 20px; }
+        .section-title { font-ETHght: bold; margin-bottom: 15px; display: flex; align-items: center; }
+    </style>
+</head>
+<body>
+
+<div class="container" style="max-width: 800px;">
+    
+    <div class="card">
+        <h5 class="section-title">🔌 1. 鏈接 MetaMask 錢包</h5>
+        <button id="connectWalletBtn" class="btn btn-primary mb-3">連接 MetaMask 錢包</button>
+        <div id="walletStatus" class="alert alert-success d-none">
+            ✅ 已連接錢包: <span id="accountAddress" class="text-break font-monospace"></span>
+        </div>
+    </div>
+
+    <div class="card">
+        <h5 class="section-title">📌 2. 智能合約位址載入</h5>
+        <div class="input-group mb-3">
+            <input type="text" id="contractAddressInput" class="form-control font-monospace" placeholder="請輸入已部署的智能合約地址 0x...">
+            <button id="loadContractBtn" class="btn btn-dark">💾 載入並同步</button>
+        </div>
+    </div>
+
+    <div id="functionalPanels" class="d-none">
+        
+        <div class="card" style="background-color: #e9ecef;">
+            <h5 class="section-title">📦 擔保交易主面板</h5>
+            <div class="p-2">
+                <p><strong>商品名稱:</strong> <span id="productName">讀取中...</span></p>
+                <p><strong>商品原價:</strong> <span id="productPrice">0 Wei</span></p>
+                <p><strong>履約押金(20%):</strong> <span id="productDeposit">0 Wei</span></p>
+                <p><strong>目前合約總餘額:</strong> <span id="contractBalance" class="badge bg-secondary fs-6">0 Wei</span></p>
+                <p><strong>目前交易狀態:</strong> <span id="txStatus" class="badge bg-primary fs-6">Created</span></p>
+            </div>
+        </div>
+
+        <div class="card">
+            <h5 class="section-title">🛒 買家操作區</h5>
+            <div class="d-flex flex-wrap gap-2">
+                <button id="buyBtn" class="btn btn-success">🛒 買家付款下單 (商品原價 + 20% 押金)</button>
+                <button id="buyerConfirmBtn" class="btn btn-success">✅ 買家確認收貨</button>
+                <button id="disputeBtn" class="btn btn-warning">⚠️ 提出爭議 (Raise Dispute)</button>
+                <button id="cancelBtn" class="btn btn-danger">❌ 逾期取消交易並退款</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <h5 class="section-title">🚀 賣家操作區</h5>
+            <div class="d-flex flex-wrap gap-2">
+                <button id="sellerDepositBtn" class="btn btn-primary">💰 賣家補繳 20% 履約押金</button>
+                <button id="sellerShipBtn" class="btn btn-primary">📦 賣家確認發貨</button>
+                <button id="autoCompleteBtn" class="btn btn-secondary">⏰ 買家延遲自動結算</button>
+                <button id="burnBtn" class="btn btn-dark">🔥 爭議未決銷毀所有資金</button>
+            </div>
+        </div>
+
+    </div>
+    </div>
+
+<script>
+    // 【完美同步】直接擷取自你 Remix 提供的合約最新完整 ABI
+    const contractABI = [
+        { "inputs": [ { "internalType": "string", "name": "_productName", "type": "string" }, { "internalType": "uint256", "name": "_priceInWei", "type": "uint256" } ], "stateMutability": "nonpayable", "type": "constructor" },
+        { "inputs": [], "name": "autoCompleteIfBuyerDelay", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
+        { "inputs": [], "name": "burnAddress", "outputs": [ { "internalType": "address payable", "name": "", "type": "address" } ], "stateMutability": "view", "type": "function" },
+        { "inputs": [], "name": "burnAllIfNoAgreement", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
+        { "inputs": [], "name": "buyer", "outputs": [ { "internalType": "address payable", "name": "", "type": "address" } ], "stateMutability": "view", "type": "function" },
+        { "inputs": [], "name": "buyerPay", "outputs": [], "stateMutability": "payable", "type": "function" },
+        { "inputs": [], "name": "cancelIfSellerNotShip", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
+        { "inputs": [], "name": "confirmReceived", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
+        { "inputs": [], "name": "deadline", "outputs": [ { "internalType": "uint256", "name": "", "type": "uint256" } ], "stateMutability": "view", "type": "function" },
+        { "inputs": [], "name": "deposit", "outputs": [ { "internalType": "uint256", "name": "", "type": "uint256" } ], "stateMutability": "view", "type": "function" },
+        { "inputs": [], "name": "getContractBalance", "outputs": [ { "internalType": "uint256", "name": "", "type": "uint256" } ], "stateMutability": "view", "type": "function" },
+        { "inputs": [], "name": "getStatusText", "outputs": [ { "internalType": "string", "name": "", "type": "string" } ], "stateMutability": "view", "type": "function" },
+        { "inputs": [], "name": "price", "outputs": [ { "internalType": "uint256", "name": "", "type": "uint256" } ], "stateMutability": "view", "type": "function" },
+        { "inputs": [], "name": "productName", "outputs": [ { "internalType": "string", "name": "", "type": "string" } ], "stateMutability": "view", "type": "function" },
+        { "inputs": [], "name": "raiseDispute", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
+        { "inputs": [], "name": "seller", "outputs": [ { "internalType": "address payable", "name": "", "type": "address" } ], "stateMutability": "view", "type": "function" },
+        { "inputs": [], "name": "sellerPayDeposit", "outputs": [], "stateMutability": "payable", "type": "function" },
+        { "inputs": [], "name": "shipProduct", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
+        { "inputs": [], "name": "status", "outputs": [ { "internalType": "uint256", "name": "", "type": "uint256" } ], "stateMutability": "view", "type": "function" }
+    ];
+
+    let web3;
+    let userAccount;
+    let escrowContract;
+    let contractPrice = 0;
+    let contractDeposit = 0;
+
+    // 1. 錢包連線
+    document.getElementById('connectWalletBtn').addEventListener('click', async () => {
+        if (window.ethereum) {
+            try {
+                web3 = new Web3(window.ethereum);
+                const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+                userAccount = accounts[0];
+                
+                document.getElementById('accountAddress').innerText = userAccount;
+                document.getElementById('walletStatus').classList.remove('d-none');
+                document.getElementById('connectWalletBtn').classList.add('d-none');
+            } catch (error) {
+                console.error("連線被拒絕", error);
+            }
+        } else {
+            alert('請安裝 MetaMask！');
+        }
+    });
+
+    // 2. 載入並同步合約狀態
+    document.getElementById('loadContractBtn').addEventListener('click', async () => {
+        const address = document.getElementById('contractAddressInput').value.trim();
+        if (!web3) { alert('請先連接錢包！'); return; }
+        if (!address) { alert('請輸入智能合約地址！'); return; }
+
+        try {
+            escrowContract = new web3.eth.Contract(contractABI, address);
+            
+            // 同步合約基礎資料，若位址有誤此處會直接拋出錯誤
+            await updateContractUI();
+            
+            // 成功後，解鎖隱藏的下方控制面板
+            document.getElementById('functionalPanels').classList.remove('d-none');
+            alert('成功與區塊鏈智能合約同步！');
+        } catch (error) {
+            console.error(error);
+            document.getElementById('functionalPanels').classList.add('d-none');
+            alert('抓不到智能合約，請確認地址、合約版本或 MetaMask 網路是否為 Ganache！');
+        }
+    });
+
+    // 動態更新資訊面板
+    async function updateContractUI() {
+        if (!escrowContract) return;
+        try {
+            // 抓取合約基本參數
+            const name = await escrowContract.methods.productName().call();
+            contractPrice = await escrowContract.methods.price().call();
+            contractDeposit = await escrowContract.methods.deposit().call();
+            const balance = await escrowContract.methods.getContractBalance().call();
+            const statusText = await escrowContract.methods.getStatusText().call();
+
+            // 渲染到網頁畫面上
+            document.getElementById('productName').innerText = name;
+            document.getElementById('productPrice').innerText = contractPrice + " Wei";
+            document.getElementById('productDeposit').innerText = contractDeposit + " Wei";
+            document.getElementById('contractBalance').innerText = balance + " Wei";
+            document.getElementById('txStatus').innerText = statusText;
+            
+            // 動態修改下單按鈕文字，讓測試更直觀
+            const totalRequired = BigInt(contractPrice) + BigInt(contractDeposit);
+            document.getElementById('buyBtn').innerText = `🛒 買家付款下單 (${totalRequired} Wei)`;
+            document.getElementById('sellerDepositBtn').innerText = `💰 賣家補繳 20% 履約押金 (${contractDeposit} Wei)`;
+
+        } catch (error) {
+            console.error("更新 UI 失敗:", error);
+            throw error;
+        }
+    }
+
+    // 3. 買家下單 (呼叫 buyerPay)
+    document.getElementById('buyBtn').addEventListener('click', async () => {
+        if (!escrowContract) return;
+        try {
+            const totalRequired = BigInt(contractPrice) + BigInt(contractDeposit);
+            await escrowContract.methods.buyerPay().send({
+                from: userAccount,
+                value: totalRequired.toString()
+            });
+            alert('買家付款下單成功！');
+            await updateContractUI();
+        } catch (error) { alert('交易失敗，詳情請見網頁 F12 Console'); console.error(error); }
+    });
+
+    // 4. 賣家繳納押金 (呼叫 sellerPayDeposit)
+    document.getElementById('sellerDepositBtn').addEventListener('click', async () => {
+        if (!escrowContract) return;
+        try {
+            await escrowContract.methods.sellerPayDeposit().send({
+                from: userAccount,
+                value: contractDeposit.toString()
+            });
+            alert('賣家履約押金繳納成功！');
+            await updateContractUI();
+        } catch (error) { alert('交易失敗，可能因為您不是賣家，或狀態不正確'); console.error(error); }
+    });
+
+    // 5. 賣家發貨 (呼叫 shipProduct)
+    document.getElementById('sellerShipBtn').addEventListener('click', async () => {
+        if (!escrowContract) return;
+        try {
+            await escrowContract.methods.shipProduct().send({ from: userAccount });
+            alert('賣家確認已發貨！');
+            await updateContractUI();
+        } catch (error) { console.error(error); }
+    });
+
+    // 6. 買家收貨 (呼叫 confirmReceived)
+    document.getElementById('buyerConfirmBtn').addEventListener('click', async () => {
+        if (!escrowContract) return;
+        try {
+            await escrowContract.methods.confirmReceived().send({ from: userAccount });
+            alert('買家確認收貨！款項已發放給賣家，雙方押金已退回。');
+            await updateContractUI();
+        } catch (error) { console.error(error); }
+    });
+
+    // 7. 買家提出爭議 (呼叫 raiseDispute)
+    document.getElementById('disputeBtn').addEventListener('click', async () => {
+        if (!escrowContract) return;
+        try {
+            await escrowContract.methods.raiseDispute().send({ from: userAccount });
+            alert('已成功提出爭議，進入協商鎖定階段！');
+            await updateContractUI();
+        } catch (error) { console.error(error); }
+    });
+
+    // 8. 買家超時取消 (呼叫 cancelIfSellerNotShip)
+    document.getElementById('cancelBtn').addEventListener('click', async () => {
+        if (!escrowContract) return;
+        try {
+            await escrowContract.methods.cancelIfSellerNotShip().send({ from: userAccount });
+            alert('取消成功，款項已退還。');
+            await updateContractUI();
+        } catch (error) { alert('無法取消。可能期限未到或合約狀態不符。'); console.error(error); }
+    });
+
+    // 9. 買家延遲自動結算 (呼叫 autoCompleteIfBuyerDelay)
+    document.getElementById('autoCompleteBtn').addEventListener('click', async () => {
+        if (!escrowContract) return;
+        try {
+            await escrowContract.methods.autoCompleteIfBuyerDelay().send({ from: userAccount });
+            alert('自動結算成功！');
+            await updateContractUI();
+        } catch (error) { alert('執行失敗。期限可能尚未超過上限。'); console.error(error); }
+    });
+
+    // 10. 銷毀資金 (呼叫 burnAllIfNoAgreement)
+    document.getElementById('burnBtn').addEventListener('click', async () => {
+        if (!escrowContract) return;
+        try {
+            await escrowContract.methods.burnAllIfNoAgreement().send({ from: userAccount });
+            alert('談判破裂！合約所有資金已全數打入黑洞地址銷毀。');
+            await updateContractUI();
+        } catch (error) { alert('執行失敗。必須處於 Disputed 狀態且超過協商時間。'); console.error(error); }
+    });
+</script>
+
+</body>
+</html>
+
